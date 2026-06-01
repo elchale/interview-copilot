@@ -1,0 +1,36 @@
+# Secrets
+.env
+**/.env
+!**/.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Audio artifacts
+*.wav
+*.opus
+*.ogg
+
+# Local data
+batches/
+sessions/
+settings.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PyInstaller
+*.spec.bak
