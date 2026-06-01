@@ -34,3 +34,10 @@ Thumbs.db
 
 # PyInstaller
 *.spec.bak
+*.manifest
+
+# Installer output
+installer_output/
+
+# Pytest
+.pytest_cache/

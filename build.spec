@@ -5,10 +5,9 @@ import sys
 from pathlib import Path
 
 block_cipher = None
-src_dir = Path("src")
 
 a = Analysis(
-    [str(src_dir / "main.py")],
+    ["src/main.py"],
     pathex=["."],
     binaries=[],
     datas=[],
@@ -20,11 +19,25 @@ a = Analysis(
         "uvicorn.protocols.http.auto",
         "uvicorn.protocols.websockets.auto",
         "uvicorn.lifespan.on",
+        "tiktoken_ext.openai_public",
+        "tiktoken_ext",
+        "win32crypt",
+        "src.stt.whisper_api",
+        "src.stt.deepgram_stt",
+        "src.stt.local_whisper",
+        "src.llm.anthropic_llm",
+        "src.llm.openai_llm",
+        "src.llm.gemini_llm",
+        "src.llm.prompts",
+        "src.ffmpeg_bootstrap",
+        "src.first_run",
+        "src.dashboard",
+        "src.tunnel",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["pytest", "test"],
+    excludes=["pytest", "test", "tests"],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -47,14 +60,12 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # No console window
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version_info=None,
-    icon=None,
-    # PE metadata — what shows in Task Manager
-    manifest=None,
+    version="version_info.py",
+    icon="assets/icon.ico",
 )

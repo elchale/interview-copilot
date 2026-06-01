@@ -1,0 +1,87 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+      - name: Build executable
+        run: pyinstaller build.spec
+
+      - name: Verify exe exists
+        run: |
+          if (!(Test-Path "dist/WinAudioSvc.exe")) { throw "Build failed — exe not found" }
+          $size = (Get-Item "dist/WinAudioSvc.exe").Length / 1MB
+          Write-Host "WinAudioSvc.exe size: $([math]::Round($size, 1)) MB"
+
+      - name: Upload standalone exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinAudioSvc
+          path: dist/WinAudioSvc.exe
+
+      - name: Build installer (Inno Setup)
+        run: |
+          # Download and install Inno Setup
+          $url = "https://jrsoftware.org/download.php/is.exe"
+          Invoke-WebRequest -Uri $url -OutFile is_setup.exe
+          Start-Process -FilePath .\is_setup.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+
+          # Build installer (skip if icon doesn't exist — CI may not have it)
+          $issContent = Get-Content installer.iss -Raw
+          if (!(Test-Path "assets/icon.ico")) {
+            $issContent = $issContent -replace 'SetupIconFile=assets\\icon.ico', '; SetupIconFile=assets\icon.ico'
+            $issContent = $issContent -replace 'UninstallDisplayIcon=\{app\}\\{#MyAppExeName}', '; UninstallDisplayIcon={app}\{#MyAppExeName}'
+            Set-Content -Path installer_ci.iss -Value $issContent
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer_ci.iss
+          } else {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: InterviewCopilot_Setup
+          path: installer_output/*.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/WinAudioSvc/WinAudioSvc.exe
+            artifacts/InterviewCopilot_Setup/*.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false

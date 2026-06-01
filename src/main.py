@@ -9,11 +9,14 @@ import os
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from .engine import Engine
+from .ffmpeg_bootstrap import ensure_ffmpeg
+from .first_run import needs_first_run, run_wizard
 from .hotkeys import CombinationListener
 from .menu import ControlMenu
 from .server import start_server, new_session, update_status
@@ -22,6 +25,8 @@ from .tray import TrayIcon
 from .tunnel import Tunnel
 
 logger = logging.getLogger(__name__)
+
+__version__ = "1.0.0"
 
 
 def _setup_logging() -> None:
@@ -67,9 +72,22 @@ def main() -> None:
             break
 
     _setup_logging()
-    logger.info("Interview Copilot starting (data: %s)", DATA_DIR)
+    logger.info("Interview Copilot v%s starting (data: %s)", __version__, DATA_DIR)
+
+    # Ensure ffmpeg is available (auto-downloads if needed)
+    ffmpeg_path = ensure_ffmpeg()
+    if ffmpeg_path:
+        logger.info("ffmpeg ready: %s", ffmpeg_path)
+    else:
+        logger.warning("ffmpeg not available — audio stored as raw PCM")
 
     settings = Settings.load()
+
+    # First-run wizard if no API keys configured
+    if needs_first_run(settings):
+        logger.info("No API keys found — launching setup wizard")
+        run_wizard(settings, lambda s: None)
+        settings = Settings.load()
 
     # Asyncio loop for AI operations
     loop = _start_async_loop()
@@ -122,7 +140,7 @@ def main() -> None:
     # System tray
     tray = TrayIcon(
         on_open_menu=menu.toggle,
-        on_open_dashboard=lambda: __import__("webbrowser").open(dashboard_url),
+        on_open_dashboard=lambda: webbrowser.open(dashboard_url),
         on_quit=on_quit,
         dashboard_url=dashboard_url,
     )
