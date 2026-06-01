@@ -7,7 +7,7 @@ from pathlib import Path
 block_cipher = None
 
 a = Analysis(
-    ["src/main.py"],
+    ["run.py"],
     pathex=["."],
     binaries=[],
     datas=[],
@@ -31,6 +31,7 @@ a = Analysis(
         "src.llm.prompts",
         "src.ffmpeg_bootstrap",
         "src.first_run",
+        "src.installer",
         "src.dashboard",
         "src.tunnel",
     ],

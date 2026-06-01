@@ -18,6 +18,7 @@ from .engine import Engine
 from .ffmpeg_bootstrap import ensure_ffmpeg
 from .first_run import needs_first_run, run_wizard
 from .hotkeys import CombinationListener
+from .installer import needs_install, run_installer
 from .menu import ControlMenu
 from .server import start_server, new_session, update_status
 from .settings import Settings, LOG_PATH, DATA_DIR
@@ -61,6 +62,14 @@ def _start_async_loop() -> asyncio.AbstractEventLoop:
 
 
 def main() -> None:
+    # Self-install on first double-click (exe only)
+    if needs_install():
+        installed = run_installer()
+        if installed:
+            sys.exit(0)  # Installed copy was launched
+        else:
+            sys.exit(1)  # User cancelled
+
     # Load .env from the source directory (dev) or next to the exe (prod)
     env_candidates = [
         Path(__file__).resolve().parent.parent / ".env",
