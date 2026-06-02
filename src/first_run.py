@@ -3,25 +3,24 @@
 from __future__ import annotations
 
 import logging
+import sys
 import tkinter as tk
 from tkinter import ttk
-from typing import Callable
 
-from .recorder import loopback_devices
 from .settings import Settings
 
 logger = logging.getLogger(__name__)
 
 LLM_PROVIDERS = {
-    "anthropic": ("Anthropic Claude", "Best for coding interviews"),
-    "openai": ("OpenAI GPT-4o", "Strong general purpose"),
-    "gemini": ("Google Gemini", "Fast, large context"),
+    "anthropic": "Anthropic Claude (recommended)",
+    "openai": "OpenAI GPT-4o",
+    "gemini": "Google Gemini",
 }
 
 STT_PROVIDERS = {
-    "whisper_api": ("OpenAI Whisper API", "Best accuracy — needs OpenAI key"),
-    "deepgram": ("Deepgram Nova-3", "Fastest — needs Deepgram key"),
-    "local": ("Local Whisper", "Free, offline — slower, needs whisper.cpp"),
+    "whisper_api": "OpenAI Whisper API (best accuracy)",
+    "deepgram": "Deepgram Nova-3 (fastest)",
+    "local": "Local Whisper (free, offline)",
 }
 
 
@@ -34,112 +33,77 @@ def needs_first_run(settings: Settings) -> bool:
     ])
 
 
-def run_wizard(settings: Settings, on_complete: Callable[[Settings], None]) -> None:
+def run_wizard(settings: Settings, on_complete) -> None:
     """Show the first-run setup wizard. Blocks until closed."""
     root = tk.Tk()
-    root.title("Interview Copilot — Setup")
-    root.geometry("560x640")
+    root.title("Interview Copilot — Initial Setup")
+    root.geometry("480x440")
     root.resizable(False, False)
-    root.configure(bg="#0f0f0f")
-    root.attributes("-topmost", True)
+    root.configure(bg="white")
+
+    root.update_idletasks()
+    x = (root.winfo_screenwidth() - 480) // 2
+    y = (root.winfo_screenheight() - 440) // 2
+    root.geometry(f"480x440+{x}+{y}")
 
     style = ttk.Style()
-    style.theme_use("clam")
-    style.configure("W.TFrame", background="#0f0f0f")
-    style.configure("W.TLabel", background="#0f0f0f", foreground="#e0e0e0", font=("Segoe UI", 10))
-    style.configure("Title.TLabel", background="#0f0f0f", foreground="#4fc3f7", font=("Segoe UI", 16, "bold"))
-    style.configure("Sub.TLabel", background="#0f0f0f", foreground="#888", font=("Segoe UI", 9))
-    style.configure("Section.TLabel", background="#0f0f0f", foreground="#66bb6a", font=("Segoe UI", 11, "bold"))
-    style.configure("W.TEntry", fieldbackground="#1a1a1a", foreground="#e0e0e0", font=("Segoe UI", 10))
-    style.configure("W.TButton", background="#4fc3f7", foreground="#0f0f0f", font=("Segoe UI", 11, "bold"))
-    style.configure("W.TRadiobutton", background="#0f0f0f", foreground="#e0e0e0", font=("Segoe UI", 10))
+    style.theme_use("vista" if "vista" in style.theme_names() else "clam")
 
-    frame = ttk.Frame(root, style="W.TFrame", padding=24)
-    frame.pack(fill="both", expand=True)
+    BG = "#f0f0f0"
+    WHITE = "white"
 
-    row = 0
+    style.configure("W.TFrame", background=WHITE)
+    style.configure("Bottom.TFrame", background=BG)
+    style.configure("W.TLabel", background=WHITE, font=("Segoe UI", 9))
+    style.configure("Title.TLabel", background=WHITE, font=("Segoe UI", 14))
+    style.configure("Bold.TLabel", background=WHITE, font=("Segoe UI", 9, "bold"))
+    style.configure("Error.TLabel", background=WHITE, font=("Segoe UI", 8), foreground="#c00")
+    style.configure("Status.TLabel", background=BG, font=("Segoe UI", 8), foreground="#555")
+    style.configure("W.TRadiobutton", background=WHITE, font=("Segoe UI", 9))
 
-    # Title
-    ttk.Label(frame, text="Interview Copilot", style="Title.TLabel").grid(
-        row=row, column=0, columnspan=2, sticky="w", pady=(0, 4)
-    )
-    row += 1
+    # --- Main area ---
+    main = ttk.Frame(root, style="W.TFrame", padding=(24, 20, 24, 8))
+    main.pack(fill="both", expand=True)
+
+    ttk.Label(main, text="Configure Your API Key", style="Title.TLabel").pack(anchor="w", pady=(0, 8))
     ttk.Label(
-        frame,
-        text="Quick setup — you only need one API key to get started.",
-        style="Sub.TLabel",
-    ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 16))
-    row += 1
+        main,
+        text="Interview Copilot needs an API key to generate answers.\nYou only need one key to get started.",
+        style="W.TLabel",
+    ).pack(anchor="w", pady=(0, 14))
 
-    # LLM Provider
-    ttk.Label(frame, text="Answer Provider", style="Section.TLabel").grid(
-        row=row, column=0, columnspan=2, sticky="w", pady=(8, 4)
-    )
-    row += 1
+    # Provider selection
+    ttk.Label(main, text="Answer provider:", style="Bold.TLabel").pack(anchor="w", pady=(0, 4))
     v_llm = tk.StringVar(value=settings.llm_provider)
-    for key, (name, desc) in LLM_PROVIDERS.items():
-        rb = ttk.Radiobutton(
-            frame, text=f"{name} — {desc}",
-            variable=v_llm, value=key, style="W.TRadiobutton",
-        )
-        rb.grid(row=row, column=0, columnspan=2, sticky="w", padx=(12, 0))
-        row += 1
+    for key, label in LLM_PROVIDERS.items():
+        ttk.Radiobutton(
+            main, text=label, variable=v_llm, value=key, style="W.TRadiobutton",
+        ).pack(anchor="w", padx=(12, 0))
 
-    # API Key
-    row += 1
-    ttk.Label(frame, text="API Key", style="Section.TLabel").grid(
-        row=row, column=0, columnspan=2, sticky="w", pady=(8, 4)
-    )
-    row += 1
-    ttk.Label(
-        frame,
-        text="Enter the key for your chosen provider above:",
-        style="Sub.TLabel",
-    ).grid(row=row, column=0, columnspan=2, sticky="w")
-    row += 1
+    # API key
+    ttk.Label(main, text="API key:", style="Bold.TLabel").pack(anchor="w", pady=(14, 4))
     v_key = tk.StringVar()
-    key_entry = ttk.Entry(frame, textvariable=v_key, width=52, style="W.TEntry", show="*")
-    key_entry.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(4, 0))
-    row += 1
+    key_entry = ttk.Entry(main, textvariable=v_key, show="*", font=("Segoe UI", 9))
+    key_entry.pack(fill="x", pady=(0, 2))
 
-    # STT Provider
-    row += 1
-    ttk.Label(frame, text="Transcription", style="Section.TLabel").grid(
-        row=row, column=0, columnspan=2, sticky="w", pady=(8, 4)
-    )
-    row += 1
+    # STT
+    ttk.Label(main, text="Transcription provider:", style="Bold.TLabel").pack(anchor="w", pady=(14, 4))
     v_stt = tk.StringVar(value=settings.stt_provider)
-    for key, (name, desc) in STT_PROVIDERS.items():
-        rb = ttk.Radiobutton(
-            frame, text=f"{name} — {desc}",
-            variable=v_stt, value=key, style="W.TRadiobutton",
-        )
-        rb.grid(row=row, column=0, columnspan=2, sticky="w", padx=(12, 0))
-        row += 1
-
-    # STT Key (if different from LLM key)
-    row += 1
-    ttk.Label(
-        frame,
-        text="STT API Key (leave blank if same as above or using local):",
-        style="Sub.TLabel",
-    ).grid(row=row, column=0, columnspan=2, sticky="w")
-    row += 1
-    v_stt_key = tk.StringVar()
-    ttk.Entry(frame, textvariable=v_stt_key, width=52, style="W.TEntry", show="*").grid(
-        row=row, column=0, columnspan=2, sticky="ew", pady=(4, 0)
-    )
-    row += 1
+    for key, label in STT_PROVIDERS.items():
+        ttk.Radiobutton(
+            main, text=label, variable=v_stt, value=key, style="W.TRadiobutton",
+        ).pack(anchor="w", padx=(12, 0))
 
     # Error label
-    row += 1
     v_error = tk.StringVar()
-    err_label = ttk.Label(frame, textvariable=v_error, foreground="#ef5350",
-                          background="#0f0f0f", font=("Segoe UI", 9))
-    err_label.grid(row=row, column=0, columnspan=2, sticky="w")
-    row += 1
+    ttk.Label(main, textvariable=v_error, style="Error.TLabel").pack(anchor="w", pady=(8, 0))
 
-    frame.columnconfigure(0, weight=1)
+    # --- Bottom bar ---
+    sep = ttk.Separator(root, orient="horizontal")
+    sep.pack(fill="x")
+
+    bottom = ttk.Frame(root, style="Bottom.TFrame", padding=(24, 10))
+    bottom.pack(fill="x")
 
     completed = False
 
@@ -161,32 +125,23 @@ def run_wizard(settings: Settings, on_complete: Callable[[Settings], None]) -> N
         settings.llm_provider = provider
         settings.stt_provider = v_stt.get()
 
-        stt_key = v_stt_key.get().strip()
-        if stt_key:
-            if v_stt.get() == "whisper_api":
-                settings.openai_key = stt_key
-            elif v_stt.get() == "deepgram":
-                settings.deepgram_key = stt_key
-        elif v_stt.get() == "whisper_api" and provider == "openai":
-            pass  # Same key
-        elif v_stt.get() == "whisper_api" and not settings.openai_key:
-            settings.openai_key = api_key  # Use LLM key for Whisper too
+        # If STT is whisper_api and user picked openai, same key works
+        if v_stt.get() == "whisper_api" and not settings.openai_key:
+            settings.openai_key = api_key
 
         settings.save()
         completed = True
         root.destroy()
 
-    # Start button
-    btn = ttk.Button(frame, text="Start Interview Copilot", command=finish, style="W.TButton")
-    btn.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(12, 0), ipady=6)
+    ttk.Button(bottom, text="Cancel", command=root.destroy, width=10).pack(side="right", padx=(6, 0))
+    ttk.Button(bottom, text="Finish", command=finish, width=10).pack(side="right")
 
     key_entry.focus_set()
     root.bind("<Return>", lambda e: finish())
-
+    root.protocol("WM_DELETE_WINDOW", root.destroy)
     root.mainloop()
 
     if completed:
         on_complete(settings)
     else:
-        import sys
         sys.exit(0)
