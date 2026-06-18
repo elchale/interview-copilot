@@ -27,11 +27,32 @@ export default function Feed() {
   const [paneA, setPaneA] = useState<TabKey>("answers");
   const [paneB, setPaneB] = useState<TabKey>("transcript");
 
+  const [clearing, setClearing] = useState(false);
+
   const lastBeat = useRef(0); // last time we saw a "recording" heartbeat
   const callActive = useRef(false);
   const cursor = useRef(0);
   const seen = useRef<Set<number>>(new Set()); // event ids already applied — kills duplicates
   const streaming = useRef(false); // poll faster while an answer streams
+
+  const clearHistory = useCallback(async () => {
+    if (!confirm("Clear all history (transcript, answers, context)? This can't be undone.")) return;
+    setClearing(true);
+    try {
+      const res = await fetch("/api/clear", { method: "POST" });
+      if (res.ok) {
+        setLines([]);
+        setAnswers([]);
+        setContexts([]);
+        seen.current.clear();
+        cursor.current = 0;
+      }
+    } catch {
+      /* leave history in place on failure */
+    } finally {
+      setClearing(false);
+    }
+  }, []);
 
   const apply = useCallback((evts: FeedEvent[]) => {
     for (const e of evts) {
@@ -143,6 +164,9 @@ export default function Feed() {
           </span>
           <button className="splitbtn" onClick={() => setSplit((s) => !s)}>
             {split ? "Single view" : "Split view"}
+          </button>
+          <button className="splitbtn danger" onClick={clearHistory} disabled={clearing}>
+            {clearing ? "Clearing…" : "Clear history"}
           </button>
           <a href="/api/auth/signout">Log out</a>
         </div>
