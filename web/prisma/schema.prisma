@@ -20,6 +20,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  systemPrompt  String?   @db.Text // user-configurable copilot system prompt / background
   accounts      Account[]
   sessions      Session[]
   devices       Device[]

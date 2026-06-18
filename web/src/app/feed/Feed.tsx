@@ -168,6 +168,7 @@ export default function Feed() {
           <button className="splitbtn danger" onClick={clearHistory} disabled={clearing}>
             {clearing ? "Clearing…" : "Clear history"}
           </button>
+          <a href="/settings">Settings</a>
           <a href="/api/auth/signout">Log out</a>
         </div>
       </div>
@@ -214,17 +215,37 @@ function TranscriptView({ lines }: { lines: Line[] }) {
   );
 }
 
+const NOTE_META: Record<string, { icon: string; label: string }> = {
+  summary: { icon: "📝", label: "Summary" },
+  fact: { icon: "📌", label: "Good to know" },
+  topic: { icon: "💡", label: "Context" },
+};
+
 function ContextView({ contexts }: { contexts: Ctx[] }) {
   if (contexts.length === 0)
-    return <div className="empty">Context gathered from the web appears here during a call.</div>;
+    return <div className="empty">Live context about what&apos;s being discussed appears here during a call.</div>;
   return (
     <>
-      {[...contexts].reverse().map((c) =>
-        c.kind === "query" ? (
-          <div key={c.id} className="ctx query">
-            <span className="ctx-icon">🔎</span> Searched <span className="ctx-q">{c.text}</span>
-          </div>
-        ) : (
+      {[...contexts].reverse().map((c) => {
+        const note = NOTE_META[c.kind];
+        if (note) {
+          return (
+            <div key={c.id} className={`ctx note ${c.kind}`}>
+              <div className="ctx-kind">
+                <span className="ctx-icon">{note.icon}</span> {note.label}
+              </div>
+              <div className="ctx-note-text">{c.text}</div>
+            </div>
+          );
+        }
+        if (c.kind === "query") {
+          return (
+            <div key={c.id} className="ctx query">
+              <span className="ctx-icon">🔎</span> Searched <span className="ctx-q">{c.text}</span>
+            </div>
+          );
+        }
+        return (
           <a
             key={c.id}
             className="ctx source"
@@ -235,8 +256,8 @@ function ContextView({ contexts }: { contexts: Ctx[] }) {
             <div className="ctx-title">{c.text || c.url}</div>
             {c.url && <div className="ctx-url">{prettyHost(c.url)}</div>}
           </a>
-        )
-      )}
+        );
+      })}
     </>
   );
 }

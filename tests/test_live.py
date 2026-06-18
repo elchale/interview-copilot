@@ -35,6 +35,11 @@ class TestHeuristicQuestion:
     def test_interrogative_midsentence(self) -> None:
         assert heuristic_is_question("So, can you explain how indexes work")
 
+    def test_no_false_positive_on_statements(self) -> None:
+        # Bare verbs mid-sentence must NOT trigger an answer — they route to the LLM gate.
+        assert not heuristic_is_question("Let me share my screen real quick.")
+        assert not heuristic_is_question("I'll describe the architecture we use.")
+
 
 class TestDeepgramStreamURL:
     def test_url_has_streaming_params(self) -> None:
@@ -58,6 +63,38 @@ class TestLivePrompt:
         system = build_live_system("GENERAL", "", "")
         assert "no prior context" in system
 
+    def test_memory_is_embedded(self) -> None:
+        system = build_live_system("GENERAL", "", "ctx", memory="- Interviewer: Dana, eng manager")
+        assert "Dana, eng manager" in system
+        assert "SESSION MEMORY" in system
+
+
+class TestContextEngine:
+    def test_parse_notes_extracts_kinds(self) -> None:
+        from src.llm.context import ContextEngine
+
+        text = (
+            "NOTE|summary|The candidate described 8 years building fintech backends.\n"
+            "NOTE|topic|The 2026 World Cup is hosted across North America.\n"
+            "ignored line\n"
+        )
+        notes = ContextEngine._parse_notes(text)
+        assert len(notes) == 2
+        assert notes[0]["kind"] == "summary"
+        assert notes[1]["kind"] == "topic"
+        assert "World Cup" in notes[1]["text"]
+
+    def test_parse_notes_skip(self) -> None:
+        from src.llm.context import ContextEngine
+
+        assert ContextEngine._parse_notes("SKIP") == []
+
+    def test_parse_notes_caps_at_two(self) -> None:
+        from src.llm.context import ContextEngine
+
+        text = "\n".join(f"NOTE|fact|note {i}" for i in range(5))
+        assert len(ContextEngine._parse_notes(text)) == 2
+
 
 class TestLiveSettings:
     def test_defaults(self) -> None:
@@ -73,7 +110,9 @@ class _FakeLiveLLM:
 
     name = "fake-live"
 
-    async def stream_live_answer(self, question, context, mode, persona, web_search, on_context=None):
+    async def stream_live_answer(
+        self, question, context, mode, persona, web_search, on_context=None, memory=""
+    ):
         if on_context is not None:
             on_context({"kind": "query", "text": "two sum complexity", "url": ""})
             on_context({"kind": "source", "text": "Time complexity", "url": "https://example.com/big-o"})

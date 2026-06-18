@@ -85,6 +85,7 @@ class Settings:
     # Live call mode (streaming STT + auto question detection)
     live_gate_model: str = "claude-haiku-4-5"
     enable_web_search: bool = True
+    enable_context: bool = True  # parallel context engine (summaries + topic primers)
     live_context_utterances: int = 12
 
     # Cloud agent: name shown in Task Manager (the exe relaunches under this name)

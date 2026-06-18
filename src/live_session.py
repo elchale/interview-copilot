@@ -16,11 +16,16 @@ from collections import deque
 
 from . import server
 from .llm import get_provider as get_llm
+from .llm.context import ContextEngine
 from .llm.gate import QuestionGate
+from .llm.memory import SessionMemory
 from .settings import Settings
 from .stt.deepgram_stream import DeepgramStream
 
 logger = logging.getLogger(__name__)
+
+# How many new utterances to accumulate before refreshing the session memory.
+_MEMORY_EVERY = 3
 
 
 class LiveSession:
@@ -31,20 +36,31 @@ class LiveSession:
         settings: Settings,
         loop: asyncio.AbstractEventLoop,
         publisher=server,
+        system_prompt: str = "",
     ) -> None:
         self._settings = settings
         self._loop = loop
-        # `publisher` is any object exposing add_transcript/start_answer/
+        # `publisher` is any object exposing add_transcript/add_context/start_answer/
         # stream_answer_delta/finish_answer/error_answer/update_status. Defaults
         # to the local server module; the cloud backend injects a per-user one.
         self._pub = publisher
+        # Per-user system prompt fetched from the web app; overrides settings.persona.
+        self._system_prompt = system_prompt
         self._active = False
         self._audio_q: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2000)
         self._stream: DeepgramStream | None = None
         self._gate: QuestionGate | None = None
+        self._memory: SessionMemory | None = None
+        self._context_engine: ContextEngine | None = None
         self._tasks: list[asyncio.Task] = []
         self._context: deque[str] = deque(maxlen=max(4, settings.live_context_utterances))
         self._answer_lock = asyncio.Lock()
+        self._mem_buffer: list[str] = []  # utterances pending a memory refresh
+
+    @property
+    def _persona(self) -> str:
+        """The active persona/background — the web system prompt wins over local settings."""
+        return self._system_prompt.strip() or self._settings.persona
 
     @property
     def is_active(self) -> bool:
@@ -86,7 +102,14 @@ class LiveSession:
             return
 
         gate_key = self._settings.anthropic_key or self._settings.llm_api_key()
-        self._gate = QuestionGate(gate_key, self._settings.live_gate_model)
+        aux_model = self._settings.live_gate_model  # cheap/fast model for gate, memory, context
+        self._gate = QuestionGate(gate_key, aux_model)
+        self._memory = SessionMemory(gate_key, aux_model)
+        if self._settings.enable_context:
+            self._context_engine = ContextEngine(
+                gate_key, aux_model, web_search=self._settings.enable_web_search
+            )
+        self._mem_buffer = []
         self._stream = DeepgramStream(dg_key)
         try:
             await self._stream.connect()
@@ -136,9 +159,14 @@ class LiveSession:
             async for utterance in self._stream.utterances():
                 if not utterance:
                     continue
-                self._context.append(f"Interviewer: {utterance}")
+                line = f"Interviewer: {utterance}"
+                self._context.append(line)
                 self._pub.add_transcript(utterance, source="system")
+                # Question answering and context gathering run in parallel — neither
+                # blocks the other, so answers stay fast while context fills in.
                 asyncio.create_task(self._maybe_answer(utterance))
+                asyncio.create_task(self._maybe_context())
+                self._schedule_memory(line)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -156,6 +184,42 @@ class LiveSession:
             return
         async with self._answer_lock:
             await self._answer(question)
+
+    async def _maybe_context(self) -> None:
+        """Run the parallel context engine and publish any notes it produces."""
+        if self._context_engine is None:
+            return
+        add_ctx = getattr(self._pub, "add_context", None)
+        if add_ctx is None:
+            return
+
+        def _on_note(item: dict) -> None:
+            try:
+                add_ctx(
+                    kind=item.get("kind", "topic"),
+                    text=item.get("text", ""),
+                    url=item.get("url", ""),
+                )
+            except Exception:
+                logger.debug("add_context publish failed", exc_info=True)
+
+        try:
+            await self._context_engine.analyze(
+                context="\n".join(self._context),
+                memory=self._memory.render() if self._memory else "",
+                on_note=_on_note,
+            )
+        except Exception:
+            logger.exception("Context engine failed")
+
+    def _schedule_memory(self, line: str) -> None:
+        """Buffer a line and refresh session memory once enough have accumulated."""
+        if self._memory is None:
+            return
+        self._mem_buffer.append(line)
+        if len(self._mem_buffer) >= _MEMORY_EVERY:
+            batch, self._mem_buffer = self._mem_buffer, []
+            asyncio.create_task(self._memory.update(batch))
 
     def force_answer(self) -> None:
         """Force an answer on the latest context — the panic / manual hotkey."""
@@ -201,9 +265,10 @@ class LiveSession:
                     question=question,
                     context=context,
                     mode=self._settings.answer_mode,
-                    persona=self._settings.persona,
+                    persona=self._persona,
                     web_search=self._settings.enable_web_search,
                     on_context=_on_context,
+                    memory=self._memory.render() if self._memory else "",
                 )
             else:
                 # Provider without a live method — fall back to the batch answer path.
@@ -211,7 +276,7 @@ class LiveSession:
                 agen = llm.stream_answer(
                     transcript=transcript,
                     mode=self._settings.answer_mode,
-                    persona=self._settings.persona,
+                    persona=self._persona,
                 )
 
             first = True

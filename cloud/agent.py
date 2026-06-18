@@ -77,6 +77,20 @@ def _check_keys(deepgram_key: str, anthropic_key: str) -> dict[str, str]:
     return out
 
 
+async def _fetch_config(token: str) -> str:
+    """Fetch the user's configurable system prompt from the web app (best-effort)."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            r = await client.get(
+                f"{BASE_URL}/api/config", headers={"Authorization": f"Bearer {token}"}
+            )
+            if r.status_code == 200:
+                return str(r.json().get("systemPrompt") or "")
+    except Exception as e:
+        logger.warning("Could not fetch system prompt config: %s", e)
+    return ""
+
+
 async def _pair() -> tuple[str, str]:
     """Browser pairing flow. Returns (token, ingest_url)."""
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
@@ -112,20 +126,34 @@ class Controller:
     def running(self) -> bool:
         return self._running
 
+    def _spawn(self, coro, what: str) -> None:
+        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
+
+        def _done(f) -> None:
+            exc = f.exception()
+            if exc:
+                logger.exception("Controller.%s failed", what, exc_info=exc)
+
+        fut.add_done_callback(_done)
+
     def start(self) -> None:
-        asyncio.run_coroutine_threadsafe(self._start(), self._loop)
+        self._spawn(self._start(), "_start")
 
     def stop(self) -> None:
-        asyncio.run_coroutine_threadsafe(self._stop(), self._loop)
+        self._spawn(self._stop(), "_stop")
 
     def toggle(self) -> None:
+        logger.info("Hotkey toggle fired (currently running=%s)", self._running)
         (self.stop if self._running else self.start)()
 
     async def _start(self) -> None:
+        logger.info("_start: beginning")
         if self._running:
             return
         s = Settings.load()
         if not s.deepgram_key or not s.anthropic_key:
+            logger.warning("_start: missing keys (deepgram=%s anthropic=%s)",
+                           bool(s.deepgram_key), bool(s.anthropic_key))
             self._status("Add and verify your API keys first.")
             return
 
@@ -139,8 +167,13 @@ class Controller:
                 self._status(f"Pairing failed: {e}")
                 return
 
+        system_prompt = await _fetch_config(token)
+        if system_prompt:
+            logger.info("_start: loaded custom system prompt (%d chars)", len(system_prompt))
         self._publisher = RemotePublisher(ingest_url, token)
-        self._live = LiveSession(s, self._loop, publisher=self._publisher)
+        self._live = LiveSession(
+            s, self._loop, publisher=self._publisher, system_prompt=system_prompt
+        )
         self._recorder = Recorder(
             loopback_device_index=s.loopback_device_index,
             on_system_audio=self._live.feed_audio,

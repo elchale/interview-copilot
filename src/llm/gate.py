@@ -19,12 +19,20 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GATE_MODEL = "claude-haiku-4-5"
 
-_INTERROGATIVES: tuple[str, ...] = (
+# Tokens that signal a question only when the line STARTS with them. Matching these
+# mid-sentence caused false positives (e.g. "let me share my screen" → "share"), so
+# bare verbs are start-only; anything ambiguous falls through to the LLM gate.
+_START_TOKENS: tuple[str, ...] = (
     "what", "why", "how", "when", "where", "who", "which", "whose", "whom",
-    "can you", "could you", "would you", "will you", "do you", "did you",
-    "have you", "are you", "is there", "what's", "how's",
+    "what's", "how's", "is there", "are there",
     "tell me", "walk me", "describe", "explain", "give me", "share",
-    "talk about", "let's", "suppose", "imagine", "consider", "what if",
+    "talk about", "let's", "suppose", "imagine", "consider", "what if", "how about",
+)
+
+# Polite request lead-ins that signal a question even mid-sentence ("so, can you...").
+_ANYWHERE_PHRASES: tuple[str, ...] = (
+    "can you", "could you", "would you", "will you", "do you", "did you",
+    "have you", "are you", "what do you", "how would you", "how do you",
 )
 
 _GATE_SCHEMA = {
@@ -47,14 +55,20 @@ _GATE_SYSTEM = (
 
 
 def heuristic_is_question(text: str) -> bool:
-    """Fast, free check for explicit questions and common interview prompts."""
+    """Fast, free check for explicit questions and common interview prompts.
+
+    Conservative on purpose: a miss here just routes the line to the smart LLM gate,
+    but a false positive forces an unwanted answer — so we only fast-path strong signals.
+    """
     t = text.strip().lower()
     if not t:
         return False
     if t.endswith("?"):
         return True
+    if any(t.startswith(k) for k in _START_TOKENS):
+        return True
     padded = f" {t} "
-    return any(t.startswith(k) or f" {k} " in padded for k in _INTERROGATIVES)
+    return any(f" {k} " in padded for k in _ANYWHERE_PHRASES)
 
 
 class QuestionGate:

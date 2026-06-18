@@ -60,13 +60,15 @@ class AnthropicProvider:
         persona: str = "",
         web_search: bool = True,
         on_context: Callable[[dict[str, Any]], None] | None = None,
+        memory: str = "",
     ) -> AsyncIterator[str]:
         """Stream a live-mode answer, optionally grounded with server-side web search.
 
         ``on_context`` (if given) is called for each web-search query Claude issues and
         each source it pulls back, so the dashboard can show what's being researched.
+        ``memory`` is the running session memory embedded into the system prompt.
         """
-        system = build_live_system(mode, persona, context)
+        system = build_live_system(mode, persona, context, memory)
 
         kwargs: dict = {
             "model": self._model,

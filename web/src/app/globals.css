@@ -89,6 +89,23 @@ ol { margin: 8px 0 0 20px; } li { margin: 4px 0; }
 .ctx-title { font-weight: 600; color: var(--text); }
 .ctx-url { font-size: 11px; color: var(--accent); margin-top: 2px; }
 
+/* Context notes — short situational comments from the parallel context engine. */
+.ctx.note { background: #1b1b1b; border: 1px solid var(--border); border-left: 3px solid var(--accent); }
+.ctx.note.summary { border-left-color: #b388ff; }
+.ctx.note.fact { border-left-color: var(--green); }
+.ctx.note.topic { border-left-color: var(--accent); }
+.ctx-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 4px; }
+.ctx-note-text { color: var(--text); }
+
+/* Settings page */
+.prompt-area {
+  width: 100%; background: #141414; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 14px; font-family: inherit; font-size: 14px; line-height: 1.6;
+  resize: vertical; min-height: 280px;
+}
+.prompt-area:focus { outline: none; border-color: var(--accent); }
+.prompt-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+
 .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
 
 @media (max-width: 760px) {

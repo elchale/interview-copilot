@@ -125,6 +125,7 @@ class CombinationListener:
                 continue
             if all(_satisfied(t, self._held) for t in combo):
                 self._fired.add(combo)
+                logger.info("Hotkey combo matched: %s", set(combo))
                 threading.Thread(target=action, daemon=True).start()
 
     def _on_release(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
