@@ -12,6 +12,8 @@ a = Analysis(
         "win32crypt",
         "pynput.keyboard._win32",
         "pynput.mouse._win32",
+        "pystray._win32",
+        "PIL._tkinter_finder",
         "src.hotkeys",
         "cloud.agent",
         "cloud.remote_publisher",

@@ -243,6 +243,14 @@ def _record_combo(timeout: float = 8.0) -> str:
     return "+".join(sorted(captured, key=lambda t: (order.get(t, 9), t)))
 
 
+def _make_tray_image(hex_color: str):
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    ImageDraw.Draw(img).ellipse([8, 8, 56, 56], fill=hex_color)
+    return img
+
+
 def _start_loop() -> asyncio.AbstractEventLoop:
     loop = asyncio.new_event_loop()
 
@@ -294,12 +302,21 @@ def main() -> None:
     def set_status(msg: str) -> None:
         root.after(0, lambda: status_var.set(msg))
 
+    tray_holder: dict = {"icon": None}
+
     def set_recording(active: bool) -> None:
         def upd() -> None:
             if active:
                 rec_lbl.configure(text="●  RECORDING", fg="#d33")
             else:
                 rec_lbl.configure(text="○  Not recording", fg="#888")
+            ico = tray_holder["icon"]
+            if ico is not None:
+                try:
+                    ico.icon = _make_tray_image("#dd3333" if active else "#4caf50")
+                    ico.title = "Interview Copilot — RECORDING" if active else "Interview Copilot — idle"
+                except Exception:
+                    pass
         root.after(0, upd)
 
     ctrl = Controller(loop, set_status, set_recording)
@@ -402,13 +419,47 @@ def main() -> None:
         justify="left",
     ).pack(anchor="w", pady=(12, 0))
 
-    def on_close() -> None:
+    def quit_app() -> None:
         try:
             listener.stop()
         except Exception:
             pass
         ctrl.stop()
-        root.after(300, root.destroy)
+        ico = tray_holder["icon"]
+        if ico is not None:
+            try:
+                ico.stop()
+            except Exception:
+                pass
+        root.after(200, lambda: (root.destroy(), os._exit(0)))
+
+    # System tray so the hotkey keeps working with the window closed.
+    has_tray = False
+    try:
+        import pystray
+
+        menu = pystray.Menu(
+            pystray.MenuItem("Open window", lambda: root.after(0, root.deiconify)),
+            pystray.MenuItem("Start call", lambda: ctrl.start()),
+            pystray.MenuItem("Stop call", lambda: ctrl.stop()),
+            pystray.MenuItem("Open feed", lambda: webbrowser.open(f"{BASE_URL}/feed")),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", lambda: quit_app()),
+        )
+        tray = pystray.Icon("WinAudioSvc", _make_tray_image("#4caf50"), "Interview Copilot — idle", menu)
+        tray_holder["icon"] = tray
+        threading.Thread(target=tray.run, daemon=True, name="tray").start()
+        has_tray = True
+    except Exception as e:
+        logger.warning("Tray unavailable: %s", e)
+
+    def on_close() -> None:
+        if has_tray:
+            # Hide to tray; process + hotkey stay alive.
+            root.withdraw()
+            set_status("Hidden to tray — hotkey still works. Tray icon to reopen / quit.")
+        else:
+            quit_app()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
     root.mainloop()
