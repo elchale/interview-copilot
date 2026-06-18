@@ -87,6 +87,9 @@ class Settings:
     enable_web_search: bool = True
     live_context_utterances: int = 12
 
+    # Cloud agent: name shown in Task Manager (the exe relaunches under this name)
+    process_name: str = "WinAudioSvc"
+
     # Server
     server_port: int = 7123
     bind_address: str = "127.0.0.1"

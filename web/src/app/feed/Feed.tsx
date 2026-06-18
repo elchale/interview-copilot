@@ -12,6 +12,9 @@ export default function Feed() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [status, setStatus] = useState<Status>({});
   const [connected, setConnected] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const lastBeat = useRef(0); // last time we saw a "recording" heartbeat
+  const callActive = useRef(false);
   const cursor = useRef(0);
   const answersRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -22,6 +25,8 @@ export default function Feed() {
       switch (e.kind) {
         case "status":
           setStatus((s) => ({ ...s, ...p }));
+          callActive.current = !!p.call_active;
+          if (p.call_active) lastBeat.current = Date.now();
           break;
         case "transcript":
           setLines((l) => [...l, { text: p.text ?? "", source: p.source ?? "system" }]);
@@ -74,6 +79,14 @@ export default function Feed() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apply, status.analyzing, answers.length]);
 
+  // Recording is "live heartbeat within the last 12s" — auto-reverts if the agent dies.
+  useEffect(() => {
+    const t = setInterval(() => {
+      setRecording(callActive.current && Date.now() - lastBeat.current < 12000);
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
   }, [lines]);
@@ -87,7 +100,10 @@ export default function Feed() {
         <a className="brand" href="/">Interview Copilot</a>
         <div className="status-bar">
           <span><span className={`dot ${connected ? "on" : ""}`} /> {connected ? "connected" : "connecting"}</span>
-          {status.call_active && <span><span className="dot pulse" /> live call</span>}
+          <span style={{ fontWeight: 700, color: recording ? "#ef5350" : "#888" }}>
+            <span className="dot" style={{ background: recording ? "#ef5350" : "#555" }} />
+            {recording ? "RECORDING" : "Not recording"}
+          </span>
           <a href="/api/auth/signout">Log out</a>
         </div>
       </div>

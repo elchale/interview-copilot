@@ -48,15 +48,26 @@ class RemotePublisher:
 
     # --- background flusher ---
     async def run_flusher(self, interval: float = 0.4) -> None:
-        headers = {"Authorization": f"Bearer {self._token}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             while True:
                 await asyncio.sleep(interval)
-                if not self._buf:
-                    continue
-                batch, self._buf = self._buf, []
-                try:
-                    await client.post(self._url, json={"events": batch}, headers=headers)
-                except Exception as e:
-                    logger.warning("ingest flush failed (%s); re-queuing %d events", e, len(batch))
-                    self._buf[0:0] = batch  # retry next tick
+                await self._flush(client)
+
+    async def flush_now(self) -> None:
+        """Send any buffered events immediately (used on stop so the web sees it)."""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await self._flush(client)
+
+    async def _flush(self, client: httpx.AsyncClient) -> None:
+        if not self._buf:
+            return
+        batch, self._buf = self._buf, []
+        try:
+            await client.post(
+                self._url,
+                json={"events": batch},
+                headers={"Authorization": f"Bearer {self._token}"},
+            )
+        except Exception as e:
+            logger.warning("ingest flush failed (%s); re-queuing %d events", e, len(batch))
+            self._buf[0:0] = batch  # retry next tick
