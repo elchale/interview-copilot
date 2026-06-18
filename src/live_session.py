@@ -179,7 +179,21 @@ class LiveSession:
                 self._settings.llm_model or None,
             )
             context = "\n".join(self._context)
-            self._pub.start_answer(answer_id)
+            self._pub.start_answer(answer_id, question=question)
+
+            def _on_context(item: dict) -> None:
+                add_ctx = getattr(self._pub, "add_context", None)
+                if add_ctx is None:
+                    return
+                try:
+                    add_ctx(
+                        kind=item.get("kind", "source"),
+                        text=item.get("text", ""),
+                        url=item.get("url", ""),
+                        answer_id=answer_id,
+                    )
+                except Exception:
+                    logger.debug("add_context publish failed", exc_info=True)
 
             stream_live = getattr(llm, "stream_live_answer", None)
             if stream_live is not None:
@@ -189,6 +203,7 @@ class LiveSession:
                     mode=self._settings.answer_mode,
                     persona=self._settings.persona,
                     web_search=self._settings.enable_web_search,
+                    on_context=_on_context,
                 )
             else:
                 # Provider without a live method — fall back to the batch answer path.

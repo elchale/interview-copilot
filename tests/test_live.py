@@ -73,7 +73,10 @@ class _FakeLiveLLM:
 
     name = "fake-live"
 
-    async def stream_live_answer(self, question, context, mode, persona, web_search):
+    async def stream_live_answer(self, question, context, mode, persona, web_search, on_context=None):
+        if on_context is not None:
+            on_context({"kind": "query", "text": "two sum complexity", "url": ""})
+            on_context({"kind": "source", "text": "Time complexity", "url": "https://example.com/big-o"})
         for tok in ("Hello ", "world"):
             yield tok
 
@@ -99,6 +102,11 @@ class TestLiveAnswerFlow:
         last = server._state["answers"][-1]
         assert last["text"] == "Hello world"
         assert last["status"] == "DONE"
+        assert last["question"] == "What is 2+2?"
+        # web-search context was captured and surfaced for the Context tab
+        ctx = server._state["context"]
+        assert any(c["kind"] == "query" for c in ctx)
+        assert any(c["kind"] == "source" and c["url"] for c in ctx)
 
     @pytest.mark.asyncio
     async def test_falls_back_when_no_live_method(self, monkeypatch) -> None:

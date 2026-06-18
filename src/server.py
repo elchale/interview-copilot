@@ -70,6 +70,7 @@ _state: dict[str, Any] = {
     "status": {"recording": False, "analyzing": False, "listening": False, "call_active": False},
     "transcript": [],
     "answers": [],
+    "context": [],
 }
 
 
@@ -85,6 +86,7 @@ def new_session() -> str:
     _state["current_session_id"] = sid
     _state["transcript"] = []
     _state["answers"] = []
+    _state["context"] = []
     logger.info("New session: %s", sid)
     return sid
 
@@ -101,11 +103,19 @@ def add_transcript(text: str, source: str = "system") -> None:
         bus.publish(sid, {"type": "transcript", "text": text, "source": source})
 
 
-def start_answer(answer_id: str) -> None:
-    _state["answers"].append({"id": answer_id, "text": "", "status": "STREAMING"})
+def add_context(text: str = "", kind: str = "source", url: str = "", answer_id: str | None = None) -> None:
+    entry = {"kind": kind, "text": text, "url": url, "answerId": answer_id, "ts": time.time()}
+    _state.setdefault("context", []).append(entry)
     sid = _state.get("current_session_id")
     if sid:
-        bus.publish(sid, {"type": "answer.start", "answerId": answer_id})
+        bus.publish(sid, {"type": "context", "kind": kind, "text": text, "url": url, "answerId": answer_id})
+
+
+def start_answer(answer_id: str, question: str = "") -> None:
+    _state["answers"].append({"id": answer_id, "text": "", "status": "STREAMING", "question": question})
+    sid = _state.get("current_session_id")
+    if sid:
+        bus.publish(sid, {"type": "answer.start", "answerId": answer_id, "question": question})
     update_status(analyzing=True)
 
 

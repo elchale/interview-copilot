@@ -34,8 +34,11 @@ class RemotePublisher:
     def add_transcript(self, text: str, source: str = "system") -> None:
         self._emit("transcript", {"text": text, "source": source})
 
-    def start_answer(self, answer_id: str) -> None:
-        self._emit("answer.start", {"answerId": answer_id})
+    def add_context(self, kind: str, text: str = "", url: str = "", answer_id: str | None = None) -> None:
+        self._emit("context", {"kind": kind, "text": text, "url": url, "answerId": answer_id})
+
+    def start_answer(self, answer_id: str, question: str = "") -> None:
+        self._emit("answer.start", {"answerId": answer_id, "question": question})
 
     def stream_answer_delta(self, answer_id: str, delta: str) -> None:
         self._emit("answer.delta", {"answerId": answer_id, "text": delta})

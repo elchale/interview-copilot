@@ -58,6 +58,7 @@ class BrowserPublisher:
         }
         self.transcript: list[dict[str, Any]] = []
         self.answers: list[dict[str, Any]] = []
+        self.context: list[dict[str, Any]] = []
 
     # --- subscription ---
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
@@ -77,7 +78,12 @@ class BrowserPublisher:
                 pass
 
     def snapshot(self) -> dict[str, Any]:
-        return {"status": self.status, "transcript": self.transcript, "answers": self.answers}
+        return {
+            "status": self.status,
+            "transcript": self.transcript,
+            "answers": self.answers,
+            "context": self.context,
+        }
 
     # --- publisher API consumed by LiveSession ---
     def update_status(self, **kwargs: Any) -> None:
@@ -88,9 +94,14 @@ class BrowserPublisher:
         self.transcript.append({"text": text, "source": source, "ts": time.time()})
         self._emit({"type": "transcript", "text": text, "source": source})
 
-    def start_answer(self, answer_id: str) -> None:
-        self.answers.append({"id": answer_id, "text": "", "status": "STREAMING"})
-        self._emit({"type": "answer.start", "answerId": answer_id})
+    def add_context(self, kind: str = "source", text: str = "", url: str = "",
+                    answer_id: str | None = None) -> None:
+        self.context.append({"kind": kind, "text": text, "url": url, "answerId": answer_id, "ts": time.time()})
+        self._emit({"type": "context", "kind": kind, "text": text, "url": url, "answerId": answer_id})
+
+    def start_answer(self, answer_id: str, question: str = "") -> None:
+        self.answers.append({"id": answer_id, "text": "", "status": "STREAMING", "question": question})
+        self._emit({"type": "answer.start", "answerId": answer_id, "question": question})
         self.update_status(analyzing=True)
 
     def stream_answer_delta(self, answer_id: str, delta: str) -> None:

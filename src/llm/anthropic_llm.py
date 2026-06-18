@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 import anthropic
 
@@ -59,8 +59,13 @@ class AnthropicProvider:
         mode: str = "GENERAL",
         persona: str = "",
         web_search: bool = True,
+        on_context: Callable[[dict[str, Any]], None] | None = None,
     ) -> AsyncIterator[str]:
-        """Stream a live-mode answer, optionally grounded with server-side web search."""
+        """Stream a live-mode answer, optionally grounded with server-side web search.
+
+        ``on_context`` (if given) is called for each web-search query Claude issues and
+        each source it pulls back, so the dashboard can show what's being researched.
+        """
         system = build_live_system(mode, persona, context)
 
         kwargs: dict = {
@@ -80,6 +85,9 @@ class AnthropicProvider:
                         yield event.delta.text
                 final = await stream.get_final_message()
 
+            if on_context is not None:
+                self._emit_context(final, on_context)
+
             if final.stop_reason == "pause_turn":
                 kwargs["messages"] = [
                     {"role": "user", "content": question},
@@ -87,3 +95,24 @@ class AnthropicProvider:
                 ]
                 continue
             break
+
+    @staticmethod
+    def _emit_context(final: Any, on_context: Callable[[dict[str, Any]], None]) -> None:
+        """Pull web-search queries and result sources out of a finished message."""
+        for block in getattr(final, "content", []) or []:
+            btype = getattr(block, "type", None)
+            if btype == "server_tool_use" and getattr(block, "name", None) == "web_search":
+                query = ""
+                inp = getattr(block, "input", None)
+                if isinstance(inp, dict):
+                    query = str(inp.get("query") or "")
+                if query:
+                    on_context({"kind": "query", "text": query, "url": ""})
+            elif btype == "web_search_tool_result":
+                for r in getattr(block, "content", None) or []:
+                    if getattr(r, "type", None) == "web_search_result":
+                        on_context({
+                            "kind": "source",
+                            "text": getattr(r, "title", "") or getattr(r, "url", ""),
+                            "url": getattr(r, "url", "") or "",
+                        })
