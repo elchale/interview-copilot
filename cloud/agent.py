@@ -12,7 +12,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import logging.handlers
 import os
+import sys
 import threading
 import tkinter as tk
 import webbrowser
@@ -243,6 +245,63 @@ def _record_combo(timeout: float = 8.0) -> str:
     return "+".join(sorted(captured, key=lambda t: (order.get(t, 9), t)))
 
 
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_RUN_NAME = "InterviewCopilot"
+
+_MUTEX_HANDLE = None  # held for process lifetime to keep the single-instance lock
+
+
+def _acquire_single_instance() -> bool:
+    """Return True if we're the only instance; False if one is already running."""
+    global _MUTEX_HANDLE
+    try:
+        import ctypes
+
+        _MUTEX_HANDLE = ctypes.windll.kernel32.CreateMutexW(None, False, "InterviewCopilotAgentSingleton")
+        return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    except Exception:
+        return True  # don't block startup if the check fails
+
+
+def _autostart_target() -> str | None:
+    """Command to register for login autostart, or None if not a frozen exe."""
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}" --hidden'
+    return None
+
+
+def _autostart_enabled() -> bool:
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
+            winreg.QueryValueEx(k, _RUN_NAME)
+            return True
+    except OSError:
+        return False
+
+
+def _set_autostart(enable: bool) -> bool:
+    """Add/remove the HKCU Run entry so the agent starts hidden at login."""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            if enable:
+                target = _autostart_target()
+                if not target:
+                    return False
+                winreg.SetValueEx(k, _RUN_NAME, 0, winreg.REG_SZ, target)
+            else:
+                try:
+                    winreg.DeleteValue(k, _RUN_NAME)
+                except OSError:
+                    pass
+        return True
+    except OSError:
+        return False
+
+
 def _make_tray_image(hex_color: str):
     from PIL import Image, ImageDraw
 
@@ -263,7 +322,26 @@ def _start_loop() -> asyncio.AbstractEventLoop:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    from src.settings import LOG_PATH
+
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(
+            logging.handlers.RotatingFileHandler(
+                LOG_PATH.parent / "agent.log", maxBytes=2 * 1024 * 1024, backupCount=2, encoding="utf-8"
+            )
+        )
+    except Exception:
+        pass
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=handlers
+    )
+
+    if not _acquire_single_instance():
+        logger.info("Another instance is already running — exiting.")
+        return
+
     load_dotenv()
 
     loop = _start_loop()
@@ -411,13 +489,28 @@ def main() -> None:
 
     ttk.Button(pn_frame, text="Apply (relaunch)", command=apply_name).pack(side="left", padx=6)
 
+    # --- Autostart at login ---
+    auto_var = tk.BooleanVar(value=_autostart_enabled())
+
+    def toggle_auto() -> None:
+        if _set_autostart(auto_var.get()):
+            set_status("Autostart enabled — starts hidden at login." if auto_var.get() else "Autostart disabled.")
+        else:
+            auto_var.set(_autostart_enabled())
+            set_status("Autostart needs the built exe (not dev mode).")
+
+    ttk.Checkbutton(
+        frm, text="Start automatically at login (hidden in tray)",
+        variable=auto_var, command=toggle_auto,
+    ).pack(anchor="w", pady=(12, 0))
+
     ttk.Label(
         frm,
         text="Idle costs nothing — Start connects to Deepgram and begins capturing.\n"
-        "The feed opens only when you click Open feed.",
+        "Closing the window hides it to the tray; the hotkey keeps working.",
         foreground="#666",
         justify="left",
-    ).pack(anchor="w", pady=(12, 0))
+    ).pack(anchor="w", pady=(8, 0))
 
     def quit_app() -> None:
         try:
@@ -462,6 +555,19 @@ def main() -> None:
             quit_app()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
+
+    # Heartbeat to the log file — proves the process is alive (esp. windowless).
+    def _tick() -> None:
+        logger.info("alive (recording=%s)", ctrl.running)
+        root.after(20000, _tick)
+
+    root.after(20000, _tick)
+
+    # Hidden/boot mode: no window, just tray + hotkey.
+    if "--hidden" in sys.argv or os.environ.get("AGENT_HIDDEN"):
+        root.withdraw()
+        set_status("Running in tray — press your hotkey to start/stop.")
+
     root.mainloop()
 
 
