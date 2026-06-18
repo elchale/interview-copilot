@@ -67,7 +67,7 @@ bus = SSEBus()
 # In-memory state for the current session
 _state: dict[str, Any] = {
     "current_session_id": None,
-    "status": {"recording": False, "analyzing": False, "listening": False},
+    "status": {"recording": False, "analyzing": False, "listening": False, "call_active": False},
     "transcript": [],
     "answers": [],
 }

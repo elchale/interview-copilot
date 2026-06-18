@@ -61,6 +61,7 @@ class Settings:
     hotkey_answer: str = "ctrl+,"
     hotkey_menu: str = "ctrl+shift_r"
     hotkey_toggle: str = "ctrl+."
+    hotkey_call: str = "ctrl+;"  # start / stop a live call
 
     # Providers
     stt_provider: str = "whisper_api"
@@ -80,6 +81,11 @@ class Settings:
     retention_hours: int = 48
     loopback_device_index: int | None = None
     continuous_listening: bool = True
+
+    # Live call mode (streaming STT + auto question detection)
+    live_gate_model: str = "claude-haiku-4-5"
+    enable_web_search: bool = True
+    live_context_utterances: int = 12
 
     # Server
     server_port: int = 7123

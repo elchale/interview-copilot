@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 from .batch_manager import BatchManager
+from .live_session import LiveSession
 from .recorder import Recorder
 from .settings import Settings
 from . import server
@@ -24,7 +25,10 @@ class Engine:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._recorder = Recorder(loopback_device_index=settings.loopback_device_index)
+        self._recorder = Recorder(
+            loopback_device_index=settings.loopback_device_index,
+            on_system_audio=self._feed_live,
+        )
         self._batch_mgr = BatchManager(
             batch_duration=settings.batch_duration_seconds,
             retention_hours=settings.retention_hours,
@@ -32,6 +36,7 @@ class Engine:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._listening = False
         self._analyzing = False
+        self._live: LiveSession | None = None
 
     @property
     def is_listening(self) -> bool:
@@ -40,6 +45,10 @@ class Engine:
     @property
     def is_analyzing(self) -> bool:
         return self._analyzing
+
+    @property
+    def is_call_active(self) -> bool:
+        return self._live is not None and self._live.is_active
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -56,6 +65,7 @@ class Engine:
     def stop_listening(self) -> None:
         if not self._listening:
             return
+        self.stop_call()
         self._recorder.stop()
         self._batch_mgr.stop()
         self._listening = False
@@ -68,8 +78,43 @@ class Engine:
         else:
             self.start_listening()
 
+    # --- Live call mode ---
+
+    def _feed_live(self, pcm: bytes) -> None:
+        """Recorder callback (capture thread): forward system audio to a live call."""
+        live = self._live
+        if live is not None and live.is_active:
+            live.feed_audio(pcm)
+
+    def start_call(self) -> None:
+        """Begin a live call: continuous transcription + auto answers."""
+        if self._loop is None:
+            logger.error("No event loop set — cannot start live call")
+            return
+        if self.is_call_active:
+            return
+        if not self._listening:
+            self.start_listening()
+        self._live = LiveSession(self.settings, self._loop)
+        asyncio.run_coroutine_threadsafe(self._live.start(), self._loop)
+        logger.info("Live call requested")
+
+    def stop_call(self) -> None:
+        if self._live is not None and self._loop is not None and self._live.is_active:
+            asyncio.run_coroutine_threadsafe(self._live.stop(), self._loop)
+
+    def toggle_call(self) -> None:
+        if self.is_call_active:
+            self.stop_call()
+        else:
+            self.start_call()
+
     def answer_latest(self) -> None:
         """Trigger AI analysis of recent audio. Thread-safe — can be called from hotkey."""
+        # During a live call this hotkey forces an immediate answer on the latest context.
+        if self.is_call_active:
+            self._live.force_answer()  # type: ignore[union-attr]
+            return
         if self._analyzing:
             logger.warning("Already analyzing — ignoring trigger")
             return

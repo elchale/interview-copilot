@@ -1,0 +1,97 @@
+// Prisma schema for the Vercel viewer.
+// Migrate:   npm run db:migrate   (dev)  /  npm run db:deploy  (prod)
+// Or push:   npm run db:push      (no migration history)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Auth.js (NextAuth) models ----
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  devices       Device[]
+  events        Event[]
+  createdAt     DateTime  @default(now())
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---- App models ----
+
+// A paired local capture agent. `token` authenticates its event uploads.
+model Device {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  label     String   @default("capture-agent")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Short-lived device-pairing handshake between the agent and a browser login.
+model PairCode {
+  id         String   @id @default(cuid())
+  deviceCode String   @unique
+  status     String   @default("pending") // pending | claimed
+  userId     String?
+  agentToken String   @default("")
+  createdAt  DateTime @default(now())
+}
+
+// Append-only feed the agent writes and the viewer polls. `id` is the cursor.
+model Event {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  kind      String // status | transcript | answer.start | answer.delta | answer.done | answer.error
+  payload   Json
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, id])
+}

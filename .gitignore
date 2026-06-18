@@ -1,7 +1,12 @@
 # Secrets
 .env
 **/.env
+**/.env.prod
 !**/.env.example
+
+# Cloud backend local data
+*.db
+cloud/static/*.exe
 
 # Python
 __pycache__/

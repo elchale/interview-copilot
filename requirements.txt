@@ -12,8 +12,12 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 sse-starlette>=2.0.0
 
+# Live call mode (Deepgram streaming STT)
+websockets>=12.0
+
 # AI providers
-anthropic>=0.100.0
+# 0.109+ required for output_config (structured outputs) and the web_search_20260209 tool used by live mode
+anthropic>=0.109.0
 openai>=1.50.0
 google-genai>=1.0.0
 httpx>=0.27.0

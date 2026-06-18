@@ -52,6 +52,7 @@ header h1{font-size:18px;font-weight:600;letter-spacing:-.5px}
     <div class="status-bar">
       <span><span class="dot off" id="dot-conn"></span><span id="lbl-conn">connecting</span></span>
       <span><span class="dot off" id="dot-rec"></span><span id="lbl-rec">idle</span></span>
+      <span id="call" style="display:none"><span class="dot pulse"></span>live call</span>
       <span id="analyzing" style="display:none"><span class="dot pulse"></span>analyzing</span>
     </div>
   </header>
@@ -65,7 +66,7 @@ header h1{font-size:18px;font-weight:600;letter-spacing:-.5px}
     <div class="col">
       <h2>Answers</h2>
       <div class="scroll" id="answers">
-        <div class="empty" id="answers-empty">Press <kbd>Ctrl+,</kbd> to generate an answer</div>
+        <div class="empty" id="answers-empty">Press <kbd>Ctrl+;</kbd> to start a live call (auto answers), or <kbd>Ctrl+,</kbd> for a one-shot answer</div>
       </div>
     </div>
   </div>
@@ -81,6 +82,7 @@ const lblConn = $('#lbl-conn');
 const dotRec = $('#dot-rec');
 const lblRec = $('#lbl-rec');
 const analyzingEl = $('#analyzing');
+const callEl = $('#call');
 
 let answers = {};
 
@@ -124,6 +126,7 @@ function updateStatus(s) {
   dotRec.className = s.listening || s.recording ? 'dot on' : 'dot off';
   lblRec.textContent = s.listening || s.recording ? 'recording' : 'idle';
   analyzingEl.style.display = s.analyzing ? '' : 'none';
+  callEl.style.display = s.call_active ? '' : 'none';
 }
 
 function addTranscript(text, source) {

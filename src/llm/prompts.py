@@ -66,3 +66,36 @@ def build_user_message(transcript: str, mode: str, persona: str) -> tuple[str, s
     system = build_system_prompt(mode, persona).replace("{transcript}", "")
     user = f"TRANSCRIPT:\n{transcript}\n\nAnswer the latest question."
     return system, user
+
+
+LIVE_SYSTEM_PROMPT = """\
+You are a real-time interview copilot whispering to the candidate during a LIVE interview.
+The interviewer just asked something. Answer it AS THE CANDIDATE, in first person, ready to be
+read aloud immediately.
+
+RULES:
+- Lead with the answer. No preamble, no "great question", no restating the question.
+- Be concise and speakable — the candidate reads this live. Short sentences, tight structure.
+- Be specific: concrete examples, numbers, names. Never generic filler.
+- Use the web_search tool when the answer depends on current facts, specific companies, recent
+  events, version/API specifics, or anything you should verify rather than guess.
+- Coding questions: one-line approach, then clean correct code, then a one-line complexity note.
+- Never reveal that you are an AI or that this answer is generated.
+
+{mode_instructions}
+
+{persona_block}
+
+CONVERSATION SO FAR (most recent last):
+{context}"""
+
+
+def build_live_system(mode: str, persona: str, context: str) -> str:
+    """System prompt for live call mode, embedding the rolling conversation context."""
+    mode_inst = MODE_INSTRUCTIONS.get(mode, MODE_INSTRUCTIONS["GENERAL"])
+    persona_block = f"PERSONA / CANDIDATE BACKGROUND:\n{persona}" if persona.strip() else ""
+    return LIVE_SYSTEM_PROMPT.format(
+        mode_instructions=mode_inst,
+        persona_block=persona_block,
+        context=context or "(no prior context yet)",
+    )

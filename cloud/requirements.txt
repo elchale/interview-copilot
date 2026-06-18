@@ -1,0 +1,19 @@
+# Cloud backend (in addition to the project's root requirements.txt)
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sse-starlette>=2.0.0
+websockets>=12.0
+anthropic>=0.109.0
+
+# Auth + sessions
+authlib>=1.3.0
+itsdangerous>=2.2.0
+httpx>=0.27.0
+python-multipart>=0.0.9
+
+# Database + at-rest key encryption
+SQLAlchemy>=2.0.0
+cryptography>=42.0.0
+
+# NOTE: the server does NOT need audio libs. The capture AGENT runs on Windows
+# from the project's root requirements.txt (PyAudioWPatch, numpy, pynput, ...).

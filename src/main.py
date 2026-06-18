@@ -160,6 +160,7 @@ def main() -> None:
             s.hotkey_answer: engine.answer_latest,
             s.hotkey_menu: menu.toggle,
             s.hotkey_toggle: engine.toggle_listening,
+            s.hotkey_call: engine.toggle_call,
         }
 
     listener = CombinationListener(_build_bindings(settings))
@@ -170,8 +171,8 @@ def main() -> None:
         engine.start_listening()
 
     logger.info(
-        "Ready — Hotkeys: answer=%s, menu=%s, toggle=%s",
-        settings.hotkey_answer, settings.hotkey_menu, settings.hotkey_toggle,
+        "Ready — Hotkeys: answer=%s, menu=%s, toggle=%s, call=%s",
+        settings.hotkey_answer, settings.hotkey_menu, settings.hotkey_toggle, settings.hotkey_call,
     )
 
     # Tkinter main loop (must be on main thread)
