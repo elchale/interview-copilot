@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import struct
 import tempfile
@@ -18,6 +19,10 @@ from .settings import BATCHES_DIR
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
+
+# Spawn child consoles (ffmpeg) windowless on Windows so no terminal flashes when
+# running under a --noconsole build; 0 elsewhere. CREATE_NO_WINDOW = 0x08000000.
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 
 class BatchManager:
@@ -123,6 +128,7 @@ class BatchManager:
                 ],
                 capture_output=True,
                 timeout=30,
+                creationflags=NO_WINDOW,
             )
             return result.returncode == 0
         except Exception as e:
@@ -184,6 +190,7 @@ class BatchManager:
                 input=pcm_data,
                 capture_output=True,
                 timeout=30,
+                creationflags=NO_WINDOW,
             )
             if result.returncode == 0:
                 size_kb = output.stat().st_size / 1024

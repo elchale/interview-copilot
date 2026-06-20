@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -44,6 +45,7 @@ class Tunnel:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                creationflags=0x08000000 if os.name == "nt" else 0,  # CREATE_NO_WINDOW
             )
 
             self._thread = threading.Thread(target=self._read_output, daemon=True)
