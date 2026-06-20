@@ -23,10 +23,19 @@ DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen"
 class DeepgramStream:
     """A live Deepgram transcription socket fed raw 16-bit PCM audio."""
 
-    def __init__(self, api_key: str, model: str = "nova-3", sample_rate: int = 16000) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "nova-3",
+        sample_rate: int = 16000,
+        language: str = "multi",
+    ) -> None:
         self._api_key = api_key
         self._model = model
         self._sample_rate = sample_rate
+        # "multi" = nova-3 multilingual code-switching (e.g. Spanish + English in
+        # one stream); or a single ISO code ("en", "es") to pin one language.
+        self._language = language or "multi"
         self._ws: websockets.WebSocketClientProtocol | None = None
 
     def _url(self) -> str:
@@ -39,10 +48,11 @@ class DeepgramStream:
             "interim_results": "true",
             "punctuate": "true",
             "smart_format": "true",
-            "endpointing": "300",
+            # Deepgram recommends 100ms endpointing for code-switching.
+            "endpointing": "100" if self._language == "multi" else "300",
             "utterance_end_ms": "1000",
             "vad_events": "true",
-            "language": "en",
+            "language": self._language,
         }
         return f"{DEEPGRAM_WS_URL}?{urlencode(params)}"
 

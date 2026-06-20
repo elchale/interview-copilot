@@ -25,6 +25,7 @@ model User {
   sessions      Session[]
   devices       Device[]
   events        Event[]
+  commands      Command[]
   createdAt     DateTime  @default(now())
 }
 
@@ -84,6 +85,19 @@ model PairCode {
   userId     String?
   agentToken String   @default("")
   createdAt  DateTime @default(now())
+}
+
+// Append-only command queue the viewer writes and the agent polls. `id` is the cursor.
+// Lets the browser ask the local agent to do something (e.g. re-answer a question).
+model Command {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  type      String // reanswer
+  payload   Json
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, id])
 }
 
 // Append-only feed the agent writes and the viewer polls. `id` is the cursor.

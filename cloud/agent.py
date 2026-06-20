@@ -120,6 +120,8 @@ class Controller:
         self._publisher: RemotePublisher | None = None
         self._flusher: asyncio.Task | None = None
         self._heartbeat: asyncio.Task | None = None
+        self._cmd_poller: asyncio.Task | None = None
+        self._token: str = ""
         self._running = False
 
     @property
@@ -167,6 +169,7 @@ class Controller:
                 self._status(f"Pairing failed: {e}")
                 return
 
+        self._token = token
         system_prompt = await _fetch_config(token)
         if system_prompt:
             logger.info("_start: loaded custom system prompt (%d chars)", len(system_prompt))
@@ -182,6 +185,7 @@ class Controller:
         await self._live.start()
         self._flusher = asyncio.create_task(self._publisher.run_flusher())
         self._heartbeat = asyncio.create_task(self._beat())
+        self._cmd_poller = asyncio.create_task(self._poll_commands())
         self._running = True
         self._on_recording(True)
         self._status("LIVE — recording. Open the feed to read suggestions.")
@@ -196,6 +200,48 @@ class Controller:
         except asyncio.CancelledError:
             raise
 
+    async def _poll_commands(self) -> None:
+        """Poll the web app for viewer-issued commands (e.g. re-answer) and run them.
+
+        One-way agent→web ingest can't carry inbound requests, so the browser drops
+        commands in a queue and we long-poll it here while the call is live.
+        """
+        url = f"{BASE_URL}/api/commands"
+        cursor = 0
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                # Skip whatever was queued before this call started.
+                try:
+                    r = await client.get(url, headers={"Authorization": f"Bearer {self._token}"})
+                    if r.status_code == 200:
+                        cursor = int(r.json().get("cursor", 0) or 0)
+                except Exception:
+                    pass
+                while True:
+                    await asyncio.sleep(1.5)
+                    try:
+                        r = await client.get(
+                            f"{url}?since={cursor}",
+                            headers={"Authorization": f"Bearer {self._token}"},
+                        )
+                        if r.status_code != 200:
+                            continue
+                        data = r.json()
+                        cursor = int(data.get("cursor", cursor) or cursor)
+                        for cmd in data.get("commands", []):
+                            self._handle_command(cmd)
+                    except Exception as e:
+                        logger.debug("command poll failed: %s", e)
+        except asyncio.CancelledError:
+            raise
+
+    def _handle_command(self, cmd: dict) -> None:
+        """Execute a single viewer command."""
+        if cmd.get("type") == "reanswer" and self._live is not None:
+            question = (cmd.get("payload") or {}).get("question", "")
+            logger.info("Re-answer requested: %s", (question or "")[:80])
+            self._live.answer_question(question)
+
     async def _stop(self) -> None:
         if not self._running:
             return
@@ -203,6 +249,9 @@ class Controller:
         if self._heartbeat:
             self._heartbeat.cancel()
             self._heartbeat = None
+        if self._cmd_poller:
+            self._cmd_poller.cancel()
+            self._cmd_poller = None
         if self._live:
             await self._live.stop()  # buffers call_active=False
         if self._publisher:

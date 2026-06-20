@@ -34,11 +34,15 @@ def _setup_logging() -> None:
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     handlers: list[logging.Handler] = [
-        logging.StreamHandler(sys.stdout),
         logging.handlers.RotatingFileHandler(
             LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=2, encoding="utf-8",
         ),
     ]
+
+    # sys.stdout is None under PyInstaller --noconsole; only log to console
+    # when one actually exists (dev runs).
+    if sys.stdout is not None:
+        handlers.insert(0, logging.StreamHandler(sys.stdout))
 
     logging.basicConfig(
         level=logging.INFO,

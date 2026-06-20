@@ -110,7 +110,7 @@ class LiveSession:
                 gate_key, aux_model, web_search=self._settings.enable_web_search
             )
         self._mem_buffer = []
-        self._stream = DeepgramStream(dg_key)
+        self._stream = DeepgramStream(dg_key, language=self._settings.stt_language)
         try:
             await self._stream.connect()
         except Exception as e:
@@ -228,6 +228,19 @@ class LiveSession:
         ctx = list(self._context)
         question = ctx[-1].split("Interviewer: ", 1)[-1] if ctx else "Help me respond right now."
         asyncio.run_coroutine_threadsafe(self._forced(question), self._loop)
+
+    def answer_question(self, question: str) -> None:
+        """Re-answer a specific question on demand (the feed's re-answer button).
+
+        Thread-safe: scheduled onto the session loop. Reuses the current rolling
+        context, so a regenerated answer benefits from everything heard since.
+        """
+        if not self._active:
+            return
+        q = (question or "").strip()
+        if not q:
+            return
+        asyncio.run_coroutine_threadsafe(self._forced(q), self._loop)
 
     async def _forced(self, question: str) -> None:
         async with self._answer_lock:

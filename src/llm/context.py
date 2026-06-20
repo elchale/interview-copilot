@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONTEXT_MODEL = "claude-haiku-4-5"
 
-WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
+# Basic web-search variant: the context engine runs on the cheap aux model
+# (Haiku by default), which doesn't support the dynamic-filtering
+# web_search_20260209 (it runs code execution under the hood — programmatic
+# tool calling, unsupported on models older than Opus 4.6 / Sonnet 4.6).
+WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search"}
 
 # Kinds the engine is allowed to emit (rendered as note cards in the feed).
 _NOTE_KINDS = {"summary", "fact", "topic"}

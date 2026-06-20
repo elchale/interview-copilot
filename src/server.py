@@ -264,6 +264,9 @@ def start_server(host: str = "127.0.0.1", port: int = 7123) -> threading.Thread:
         port=port,
         log_level="warning",
         access_log=False,
+        # Skip uvicorn's dictConfig: its ColourizedFormatter calls
+        # sys.stdout.isatty(), which is None under PyInstaller --noconsole.
+        log_config=None,
     )
     server = uvicorn.Server(config)
 

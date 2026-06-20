@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AnswerBody } from "./AnswerBody";
 
 type FeedEvent = { id: number; kind: string; payload: any };
 type Line = { id: number; text: string; source: string };
@@ -183,35 +184,136 @@ export default function Feed() {
 
 // Newest first everywhere — so the latest item is always at the top of the feed.
 
+// Scroll container that keeps your reading position when new content streams in
+// above you (newest-first). If you're parked on an older answer, a new one no
+// longer yanks you to the top — a pill appears so you jump up only when you want.
+function ScrollList<T>({
+  items,
+  itemKey,
+  render,
+  newLabel,
+}: {
+  items: T[];
+  itemKey: (item: T) => string | number;
+  render: (item: T) => ReactNode;
+  newLabel: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const prevH = useRef(0);
+  const [hasNew, setHasNew] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const newH = el.scrollHeight;
+    const atTop = el.scrollTop <= 24;
+    if (!atTop && newH > prevH.current) {
+      // Content grew above the viewport — counter-scroll so what you're reading stays put.
+      el.scrollTop += newH - prevH.current;
+      setHasNew(true);
+    }
+    prevH.current = newH;
+  });
+
+  const onScroll = () => {
+    const el = ref.current;
+    if (el && el.scrollTop <= 24) setHasNew(false);
+  };
+  const jumpTop = () => {
+    ref.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setHasNew(false);
+  };
+
+  return (
+    <div className="scroll-wrap">
+      {hasNew && (
+        <button className="newpill" onClick={jumpTop}>
+          ↑ {newLabel}
+        </button>
+      )}
+      <div ref={ref} className="scroll-list" onScroll={onScroll}>
+        {items.map((it) => (
+          <Fragment key={itemKey(it)}>{render(it)}</Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+async function requestReanswer(question: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "reanswer", payload: { question } }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function AnswerCard({ a }: { a: Answer }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "fail">("idle");
+  const streaming = a.status === "STREAMING";
+
+  const reAnswer = async () => {
+    setState("sending");
+    const ok = await requestReanswer(a.question || a.text || "");
+    setState(ok ? "sent" : "fail");
+    setTimeout(() => setState("idle"), 2500);
+  };
+
+  const label =
+    state === "sending" ? "Re-answering…" :
+    state === "sent" ? "Requested ✓" :
+    state === "fail" ? "Agent offline?" : "↻ Re-answer";
+
+  return (
+    <div className={`answer ${streaming ? "live" : ""}`}>
+      {a.question ? <div className="qhighlight">{a.question}</div> : null}
+      <AnswerBody text={a.text || (streaming ? "…" : "")} />
+      <div className="answer-foot">
+        {a.status === "DONE" && a.latencyMs != null && (
+          <span className="meta">First token in {a.latencyMs} ms</span>
+        )}
+        {a.status === "ERROR" && <span className="meta" style={{ color: "var(--red)" }}>Error generating answer</span>}
+        {!streaming && (
+          <button className="reanswer-btn" onClick={reAnswer} disabled={state === "sending"}>
+            {label}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AnswersView({ answers }: { answers: Answer[] }) {
   if (answers.length === 0) return <div className="empty">Suggestions appear here during a call.</div>;
   return (
-    <>
-      {[...answers].reverse().map((a) => (
-        <div key={a.id} className={`answer ${a.status === "STREAMING" ? "live" : ""}`}>
-          {a.question ? <div className="qhighlight">{a.question}</div> : null}
-          <div className="atext">{a.text || (a.status === "STREAMING" ? "…" : "")}</div>
-          {a.status === "DONE" && a.latencyMs != null && (
-            <div className="meta">First token in {a.latencyMs} ms</div>
-          )}
-          {a.status === "ERROR" && <div className="meta" style={{ color: "var(--red)" }}>Error generating answer</div>}
-        </div>
-      ))}
-    </>
+    <ScrollList
+      items={[...answers].reverse()}
+      itemKey={(a) => a.id}
+      newLabel="New answer"
+      render={(a) => <AnswerCard a={a} />}
+    />
   );
 }
 
 function TranscriptView({ lines }: { lines: Line[] }) {
   if (lines.length === 0) return <div className="empty">Waiting for audio… start a call in the app.</div>;
   return (
-    <>
-      {[...lines].reverse().map((l) => (
-        <div key={l.id} className={`line ${l.source === "mic" ? "mic" : ""}`}>
+    <ScrollList
+      items={[...lines].reverse()}
+      itemKey={(l) => l.id}
+      newLabel="New line"
+      render={(l) => (
+        <div className={`line ${l.source === "mic" ? "mic" : ""}`}>
           <div className="src">{l.source === "mic" ? "You" : "Interviewer"}</div>
           {l.text}
         </div>
-      ))}
-    </>
+      )}
+    />
   );
 }
 
@@ -225,12 +327,15 @@ function ContextView({ contexts }: { contexts: Ctx[] }) {
   if (contexts.length === 0)
     return <div className="empty">Live context about what&apos;s being discussed appears here during a call.</div>;
   return (
-    <>
-      {[...contexts].reverse().map((c) => {
+    <ScrollList
+      items={[...contexts].reverse()}
+      itemKey={(c) => c.id}
+      newLabel="New context"
+      render={(c) => {
         const note = NOTE_META[c.kind];
         if (note) {
           return (
-            <div key={c.id} className={`ctx note ${c.kind}`}>
+            <div className={`ctx note ${c.kind}`}>
               <div className="ctx-kind">
                 <span className="ctx-icon">{note.icon}</span> {note.label}
               </div>
@@ -240,25 +345,19 @@ function ContextView({ contexts }: { contexts: Ctx[] }) {
         }
         if (c.kind === "query") {
           return (
-            <div key={c.id} className="ctx query">
+            <div className="ctx query">
               <span className="ctx-icon">🔎</span> Searched <span className="ctx-q">{c.text}</span>
             </div>
           );
         }
         return (
-          <a
-            key={c.id}
-            className="ctx source"
-            href={c.url || "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a className="ctx source" href={c.url || "#"} target="_blank" rel="noopener noreferrer">
             <div className="ctx-title">{c.text || c.url}</div>
             {c.url && <div className="ctx-url">{prettyHost(c.url)}</div>}
           </a>
         );
-      })}
-    </>
+      }}
+    />
   );
 }
 

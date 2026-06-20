@@ -75,7 +75,9 @@ class Settings:
     _gemini_key_enc: str = field(default="", repr=False)
 
     # Recording
-    answer_mode: str = "CODING"
+    # GENERAL works for any interview (behavioral, philosophy, domain, etc.) without
+    # assuming a coding/technical context. Switch to CODING/BEHAVIORAL/etc. per session.
+    answer_mode: str = "GENERAL"
     answer_window_seconds: int = 180
     batch_duration_seconds: int = 60
     retention_hours: int = 48
@@ -83,6 +85,10 @@ class Settings:
     continuous_listening: bool = True
 
     # Live call mode (streaming STT + auto question detection)
+    # "multi" = Deepgram nova-3 multilingual code-switching (Spanish + English +
+    # others in the same stream). Use a single ISO code (e.g. "en", "es") to pin
+    # one language if the interview is known to be monolingual.
+    stt_language: str = "multi"
     live_gate_model: str = "claude-haiku-4-5"
     enable_web_search: bool = True
     enable_context: bool = True  # parallel context engine (summaries + topic primers)
